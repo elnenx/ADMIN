@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VORTX DEV - لوحة التحكم المستقلة</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Tajawal', 'sans-serif'] },
+                    colors: { primary: '#002df3', dark: '#0f172a', card: '#1e293b' }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-dark text-slate-100 min-h-screen font-sans">
+
+    <!-- إشعار منبثق لحظي داخل الداش بورد (Realtime Toast) -->
+    <div id="realtime-toast" class="fixed top-5 left-5 right-5 md:left-8 md:right-auto md:w-96 bg-primary text-white p-4 rounded-2xl shadow-2xl border border-blue-400/40 z-[100] hidden items-start gap-3 transition-all">
+        <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 mt-0.5">
+            <i class="ph-fill ph-bell-ringing text-2xl animate-bounce"></i>
+        </div>
+        <div class="flex-1">
+            <h4 class="font-black text-sm">🚀 طلب مشروع جديد وصل الآن!</h4>
+            <p id="toast-body" class="text-xs text-blue-100 mt-1 leading-relaxed"></p>
+        </div>
+        <button onclick="document.getElementById('realtime-toast').classList.add('hidden')" class="text-white/80 hover:text-white">
+            <i class="ph ph-x text-lg"></i>
+        </button>
+    </div>
+
+    <!-- شاشة تسجيل الدخول -->
+    <div id="auth-view" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-card border border-slate-700/60 rounded-3xl p-8 w-full max-w-md shadow-2xl">
+            <div class="flex items-center justify-center gap-3 mb-6">
+                <img src="https://res.cloudinary.com/dyhlzplzb/image/upload/v1786664730/1000163758-removebg-preview_bwnpp6.png" class="w-10 h-10 object-contain">
+                <h1 class="text-2xl font-black tracking-wide">VORTX ADMIN</h1>
+            </div>
+            <p class="text-slate-400 text-sm text-center mb-6">سجل الدخول بحساب الأدمن لإدارة محتوى الموقع وطلبات العملاء</p>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-slate-300">البريد الإلكتروني</label>
+                    <input type="email" id="login-email" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-left focus:outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-slate-300">كلمة المرور</label>
+                    <input type="password" id="login-password" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-left focus:outline-none focus:border-primary">
+                </div>
+                <div id="login-error" class="hidden text-red-400 text-sm font-medium text-center"></div>
+                <button type="submit" id="login-btn" class="w-full bg-primary hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors">
+                    تسجيل الدخول
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- واجهة لوحة التحكم الرئيسية -->
+    <div id="dashboard-view" class="hidden min-h-screen flex flex-col md:flex-row">
+        
+        <!-- القائمة الجانبية -->
+        <aside class="w-full md:w-64 bg-card border-b md:border-b-0 md:border-l border-slate-800 p-5 flex flex-col justify-between shrink-0">
+            <div>
+                <div class="flex items-center justify-between mb-8 px-2">
+                    <div class="flex items-center gap-3">
+                        <img src="https://res.cloudinary.com/dyhlzplzb/image/upload/v1786664730/1000163758-removebg-preview_bwnpp6.png" class="w-8 h-8 object-contain">
+                        <div>
+                            <div class="font-black text-lg leading-none">VORTX DEV</div>
+                            <span class="text-[11px] text-green-400 font-bold flex items-center gap-1 mt-0.5">
+                                <span class="w-2 h-2 rounded-full bg-green-400 animate-ping"></span> متصل لحظياً
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <nav class="space-y-2">
+                    <button onclick="switchTab('leads')" id="tab-btn-leads" class="tab-btn w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm bg-primary text-white transition-colors">
+                        <span class="flex items-center gap-2.5"><i class="ph ph-users-three text-lg"></i> طلبات العملاء (Leads)</span>
+                        <span id="leads-badge" class="bg-white/20 text-xs px-2 py-0.5 rounded-full">0</span>
+                    </button>
+                    <button onclick="switchTab('projects')" id="tab-btn-projects" class="tab-btn w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-slate-300 hover:bg-slate-800 transition-colors">
+                        <span class="flex items-center gap-2.5"><i class="ph ph-briefcase text-lg"></i> أعمالنا (Projects)</span>
+                        <span id="projects-badge" class="bg-slate-800 text-xs px-2 py-0.5 rounded-full">0</span>
+                    </button>
+                    <button onclick="switchTab('services')" id="tab-btn-services" class="tab-btn w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-slate-300 hover:bg-slate-800 transition-colors">
+                        <span class="flex items-center gap-2.5"><i class="ph ph-stack text-lg"></i> خدماتنا (Services)</span>
+                    </button>
+                    <button onclick="switchTab('settings')" id="tab-btn-settings" class="tab-btn w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-slate-300 hover:bg-slate-800 transition-colors">
+                        <span class="flex items-center gap-2.5"><i class="ph ph-bell-ringing text-lg"></i> الإعدادات والإشعارات</span>
+                    </button>
+                </nav>
+            </div>
+
+            <div class="mt-8 pt-4 border-t border-slate-800 space-y-2">
+                <button onclick="enableAudioAndNotifications()" id="enable-sound-btn" class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 font-bold text-xs transition-colors">
+                    <i class="ph ph-speaker-high text-base"></i> تفعيل واختبار جرس التنبيه
+                </button>
+                <div id="admin-email" class="text-xs text-slate-400 truncate px-2 text-center" dir="ltr"></div>
+                <button onclick="logout()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 font-bold text-sm transition-colors">
+                    <i class="ph ph-sign-out text-lg"></i> تسجيل الخروج
+                </button>
+            </div>
+        </aside>
+
+        <!-- المحتوى الرئيسي -->
+        <main class="flex-1 p-5 md:p-8 overflow-y-auto">
+            
+            <!-- 1. قسم طلبات العملاء (Leads) -->
+            <section id="tab-leads" class="tab-content space-y-6">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-2xl font-black">طلبات العملاء (Wizard Leads)</h2>
+                        <p class="text-slate-400 text-sm">تتحدث هذه القائمة تلقائياً بالصوت فور إرسال أي عميل لطلب جديد</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="sendTestMobileNotification()" class="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
+                            <i class="ph ph-device-mobile-speaker text-lg"></i> إرسال إشعار تجريبي لتليفوني
+                        </button>
+                        <button onclick="fetchLeads()" class="bg-slate-800 hover:bg-slate-700 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
+                            <i class="ph ph-arrows-clockwise"></i> تحديث
+                        </button>
+                    </div>
+                </div>
+                <div id="leads-container" class="grid grid-cols-1 gap-4"></div>
+            </section>
+
+            <!-- 2. قسم المشاريع (Projects) -->
+            <section id="tab-projects" class="tab-content hidden space-y-6">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-2xl font-black">إدارة أعمالنا (Portfolio)</h2>
+                        <p class="text-slate-400 text-sm">إضافة، تعديل، ترتيب أو إخفاء المشاريع المعروضة في الموقع</p>
+                    </div>
+                    <button onclick="openProjectForm()" class="bg-primary hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
+                        <i class="ph ph-plus-circle text-lg"></i> إضافة مشروع جديد
+                    </button>
+                </div>
+                <div id="projects-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+            </section>
+
+            <!-- 3. قسم الخدمات (Services) -->
+            <section id="tab-services" class="tab-content hidden space-y-6">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-2xl font-black">إدارة قسم خدماتنا</h2>
+                        <p class="text-slate-400 text-sm">تعديل عناوين ووصف وأيقونات الخدمات</p>
+                    </div>
+                    <button onclick="openServiceForm()" class="bg-primary hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
+                        <i class="ph ph-plus-circle text-lg"></i> إضافة خدمة جديدة
+                    </button>
+                </div>
+                <div id="services-container" class="grid grid-cols-1 md:grid-cols-3 gap-5"></div>
+            </section>
+
+            <!-- 4. قسم الإعدادات والإشعارات (Settings & Alerts) -->
+            <section id="tab-settings" class="tab-content hidden space-y-6 max-w-3xl">
+                <div>
+                    <h2 class="text-2xl font-black">إعدادات الموقع وإشعارات الهاتف</h2>
+                    <p class="text-slate-400 text-sm">تحكم في إشعارات الموبايل الفورية (ntfy & Telegram) وروابط التواصل</p>
+                </div>
+
+                <form id="settings-form" class="space-y-6">
+                    <!-- بطاقة إشعارات الهاتف بالصوت -->
+                    <div class="bg-card border border-blue-500/30 rounded-2xl p-6 space-y-4">
+                        <div class="flex items-center gap-3 text-blue-400">
+                            <i class="ph-fill ph-bell-ringing text-2xl"></i>
+                            <h3 class="font-black text-lg text-white">إشعارات الهاتف الفورية بالصوت (Mobile Push & Telegram)</h3>
+                        </div>
+                        <p class="text-xs text-slate-300 leading-relaxed bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                            📱 <strong>لاستلام إشعار صوتي فوري على تليفونك:</strong> حمّل تطبيق <strong>ntfy</strong> المجاني من متجر التطبيقات، واضغط <strong>+</strong> واشترك في اسم القناة المكتوب بالأسفل. بمجرد أن يرسل أي عميل طلباً، سيرن هاتفك فوراً مع زر فتح واتساب العميل.
+                        </p>
+                        <div>
+                            <label class="block text-sm font-bold mb-2 text-blue-300">اسم قناة إشعارات الهاتف (ntfy.sh Topic)</label>
+                            <input type="text" id="set-ntfy" dir="ltr" placeholder="vortx_dev_alerts_201129268929" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-left font-mono text-sm">
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                            <div>
+                                <label class="block text-xs font-bold mb-1.5 text-slate-300">Telegram Bot Token (اختياري)</label>
+                                <input type="text" id="set-tg-token" dir="ltr" placeholder="123456:ABC-DEF..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-left font-mono text-xs">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-1.5 text-slate-300">Telegram Chat ID (اختياري)</label>
+                                <input type="text" id="set-tg-chat" dir="ltr" placeholder="987654321" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-left font-mono text-xs">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- بطاقة إعدادات الموقع الأساسية -->
+                    <div class="bg-card border border-slate-800 rounded-2xl p-6 space-y-5">
+                        <h3 class="font-black text-lg">بيانات التواصل ومحتوى الواجهة</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold mb-2">البريد الإلكتروني للتواصل</label>
+                                <input type="email" id="set-email" dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-left">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold mb-2">رقم الواتساب (بدون + مثل: 201129268929)</label>
+                                <input type="text" id="set-wa" dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-left">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold mb-2">رابط Formspree Endpoint</label>
+                            <input type="url" id="set-formspree" dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-left">
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold mb-2">عنوان الـ Hero (عربي - يدعم HTML)</label>
+                                <textarea id="set-hero-title-ar" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold mb-2">عنوان الـ Hero (إنجليزي - يدعم HTML)</label>
+                                <textarea id="set-hero-title-en" rows="3" dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-left"></textarea>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold mb-2">وصف الـ Hero (عربي)</label>
+                                <textarea id="set-hero-desc-ar" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold mb-2">وصف الـ Hero (إنجليزي)</label>
+                                <textarea id="set-hero-desc-en" rows="3" dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-left"></textarea>
+                            </div>
+                        </div>
+                        <button type="submit" id="save-settings-btn" class="bg-primary hover:bg-blue-700 text-white font-bold px-6 py-3.5 rounded-xl transition-colors">
+                            حفظ جميع الإعدادات
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- نافذة إضافة/تعديل مشروع (Modal) -->
+    <div id="project-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-card border border-slate-700 rounded-3xl p-6 w-full max-w-2xl my-8">
+            <div class="flex items-center justify-between mb-5">
+                <h3 id="project-modal-title" class="text-xl font-black">إضافة مشروع</h3>
+                <button onclick="closeProjectForm()" class="text-slate-400 hover:text-white"><i class="ph ph-x text-2xl"></i></button>
+            </div>
+            <form id="project-form" class="space-y-4">
+                <input type="hidden" id="proj-id">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold mb-1 text-slate-300">اسم المشروع (عربي)</label>
+                        <input type="text" id="proj-title-ar" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold mb-1 text-slate-300">اسم المشروع (إنجليزي)</label>
+                        <input type="text" id="proj-title-en" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-left">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold mb-1 text-slate-300">الوصف (عربي)</label>
+                        <textarea id="proj-desc-ar" rows="2" required class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold mb-1 text-slate-300">الوصف (إنجليزي)</label>
+                        <textarea id="proj-desc-en" rows="2" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-left"></textarea>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold mb-1 text-slate-300">الوسوم بالعربي (مفصولة بفاصلة ,)</label>
+                        <input type="text" id="proj-tags-ar" placeholder="متجر إلكتروني, أزياء" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold mb-1 text-slate-300">الوسوم بالإنجليزي (مفصولة بفاصلة ,)</label>
+                        <input type="text" id="proj-tags-en" dir="ltr" placeholder="Online Store, Fashion" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-left">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-bold mb-1 text-slate-300">رابط الموقع الحي (Live URL)</label>
+                        <input type="url" id="proj-link" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-left">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold mb-1 text-slate-300">ترتيب العرض</label>
+                        <input type="number" id="proj-order" value="1" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <label class="block text-xs font-bold text-blue-400">صورة المشروع (ارفع صورة مباشرة لـ Supabase Storage أو ضع رابط Cloudinary)</label>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input type="url" id="proj-img" required dir="ltr" placeholder="https://res.cloudinary.com/..." class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-left">
+                        <label class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl text-sm font-bold cursor-pointer flex items-center justify-center gap-2 shrink-0">
+                            <i class="ph ph-upload-simple text-lg"></i>
+                            <span id="upload-status-text">رفع ملف صورة</span>
+                            <input type="file" id="proj-file-input" accept="image/*" class="hidden" onchange="uploadProjectImage(this)">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 pt-2">
+                    <input type="checkbox" id="proj-visible" checked class="w-4 h-4 accent-primary">
+                    <label for="proj-visible" class="text-sm font-bold">إظهار المشروع في الموقع العام</label>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                    <button type="button" onclick="closeProjectForm()" class="px-5 py-2.5 rounded-xl bg-slate-800 text-sm font-bold">إلغاء</button>
+                    <button type="submit" class="px-6 py-2.5 rounded-xl bg-primary hover:bg-blue-700 text-white text-sm font-bold">حفظ المشروع</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- نافذة إضافة/تعديل خدمة (Service Modal) -->
+    <div id="service-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-card border border-slate-700 rounded-3xl p-6 w-full max-w-lg">
+            <div class="flex items-center justify-between mb-5">
+                <h3 class="text-xl font-black">بيانات الخدمة</h3>
+                <button onclick="closeServiceForm()" class="text-slate-400 hover:text-white"><i class="ph ph-x text-2xl"></i></button>
+            </div>
+            <form id="service-form" class="space-y-4">
+                <input type="hidden" id="serv-id">
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold mb-1">الرقم (Badge)</label>
+                        <input type="text" id="serv-badge" value="01" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-center">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold mb-1">أيقونة Phosphor</label>
+                        <input type="text" id="serv-icon" value="ph-globe" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-left">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold mb-1">الترتيب</label>
+                        <input type="number" id="serv-order" value="1" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold mb-1">العنوان (عربي)</label>
+                    <input type="text" id="serv-title-ar" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold mb-1">العنوان (إنجليزي)</label>
+                    <input type="text" id="serv-title-en" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-left">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold mb-1">الوصف (عربي)</label>
+                    <textarea id="serv-desc-ar" rows="2" required class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold mb-1">الوصف (إنجليزي)</label>
+                    <textarea id="serv-desc-en" rows="2" required dir="ltr" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-sm text-left"></textarea>
+                </div>
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                    <button type="button" onclick="closeServiceForm()" class="px-5 py-2.5 rounded-xl bg-slate-800 text-sm font-bold">إلغاء</button>
+                    <button type="submit" class="px-6 py-2.5 rounded-xl bg-primary hover:bg-blue-700 text-white text-sm font-bold">حفظ الخدمة</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://wmnqwuvjfmubfdnygixn.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtbnF3dXZqZm11YmZkbnlnaXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ4MzIxNDAsImV4cCI6MjExMDQwODE0MH0.tQ9OVgaYhZowsl9JgqHq1oGQM4Ia_VBRv6PxOdOCr6Y';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let allProjects = [];
+        let allServices = [];
+        let allLeads = [];
+        let realtimeChannel = null;
+        let audioCtx = null;
+
+        // توليد جرس تنبيه صوتي واضح عبر Web Audio API (بدون الحاجة لملف صوت خارجي)
+        function playAlertSound() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const notes = [587.33, 880, 1174.66]; // نغمة ثلاثية واضحة (D5 -> A5 -> D6)
+                notes.forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.14);
+
+                    gain.gain.setValueAtTime(0.35, audioCtx.currentTime + idx * 0.14);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.14 + 0.35);
+
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(audioCtx.currentTime + idx * 0.14);
+                    osc.stop(audioCtx.currentTime + idx * 0.14 + 0.35);
+                });
+            } catch (e) {
+                console.warn('Audio play blocked until user interaction:', e);
+            }
+        }
+
+        function enableAudioAndNotifications() {
+            playAlertSound();
+            if ('Notification' in window && Notification.permission !== 'granted') {
+                Notification.requestPermission();
+            }
+            const btn = document.getElementById('enable-sound-btn');
+            btn.innerHTML = '<i class="ph ph-check-circle text-base"></i> جرس التنبيه مفعل ويعمل';
+            btn.className = 'w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/15 text-emerald-400 font-bold text-xs transition-colors';
+        }
+
+        // الاستماع اللحظي (Supabase Realtime) لأي طلب مشروع جديد
+        function subscribeToRealtimeLeads() {
+            if (realtimeChannel) return;
+            realtimeChannel = sb
+                .channel('vortx-leads-live')
+                .on(
+                    'postgres_changes',
+                    { event: 'INSERT', schema: 'public', table: 'vortx_leads' },
+                    (payload) => {
+                        const newLead = payload.new;
+                        playAlertSound();
+                        fetchLeads();
+
+                        // إظهار الإشعار المنبثق داخل الداش بورد
+                        const toast = document.getElementById('realtime-toast');
+                        const toastBody = document.getElementById('toast-body');
+                        toastBody.innerText = `${newLead.name} طلب (${newLead.project_type}) - الميزانية: ${newLead.budget}`;
+                        toast.classList.remove('hidden');
+                        toast.classList.add('flex');
+
+                        // إرسال إشعار متصفح/نظام التشغيل
+                        if ('Notification' in window && Notification.permission === 'granted') {
+                            new Notification('🚀 طلب مشروع جديد - VORTX DEV', {
+                                body: `${newLead.name} (${newLead.project_type}) - ${newLead.whatsapp}`
+                            });
+                        }
+                    }
+                )
+                .subscribe();
+        }
+
+        // إرسال إشعار تجريبي مباشر للهاتف عبر ntfy.sh
+        async function sendTestMobileNotification() {
+            const topic = document.getElementById('set-ntfy').value.trim() || 'vortx_dev_alerts_201129268929';
+            playAlertSound();
+            try {
+                await fetch('https://ntfy.sh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        topic: topic,
+                        title: '🔔 إشعار تجريبي - VORTX DEV',
+                        message: 'نظام الإشعارات الصوتية مربوط بتليفونك بنجاح! أي طلب مشروع جديد سيصلك هنا فوراً.',
+                        priority: 5,
+                        tags: ['white_check_mark', 'rocket']
+                    })
+                });
+                alert(`تم إرسال إشعار تجريبي بالصوت إلى قناة: ${topic}\nتأكد من اشتراكك في هذه القناة داخل تطبيق ntfy على تليفونك.`);
+            } catch (err) {
+                alert('تعذر إرسال الإشعار التجريبي: ' + err.message);
+            }
+        }
+
+        // التحقق من الجلسة
+        async function checkAuth() {
+            const { data: { session } } = await sb.auth.getSession();
+            if (session) {
+                document.getElementById('auth-view').classList.add('hidden');
+                document.getElementById('dashboard-view').classList.remove('hidden');
+                document.getElementById('admin-email').innerText = session.user.email;
+                loadAllDashboardData();
+                subscribeToRealtimeLeads();
+            } else {
+                document.getElementById('auth-view').classList.remove('hidden');
+                document.getElementById('dashboard-view').classList.add('hidden');
+            }
+        }
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            const errEl = document.getElementById('login-error');
+            errEl.classList.add('hidden');
+
+            const { error } = await sb.auth.signInWithPassword({ email, password });
+            if (error) {
+                errEl.innerText = 'بيانات الدخول غير صحيحة: ' + error.message;
+                errEl.classList.remove('hidden');
+            } else {
+                checkAuth();
+            }
+        });
+
+        async function logout() {
+            await sb.auth.signOut();
+            checkAuth();
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-primary', 'text-white');
+                btn.classList.add('text-slate-300');
+            });
+            const activeBtn = document.getElementById(`tab-btn-${tab}`);
+            activeBtn.classList.add('bg-primary', 'text-white');
+            activeBtn.classList.remove('text-slate-300');
+        }
+
+        async function loadAllDashboardData() {
+            await Promise.all([fetchLeads(), fetchProjects(), fetchServices(), fetchSettings()]);
+        }
+
+        // 1. إدارة طلبات العملاء (Leads)
+        async function fetchLeads() {
+            const { data } = await sb.from('vortx_leads').select('*').order('created_at', { ascending: false });
+            allLeads = data || [];
+            document.getElementById('leads-badge').innerText = allLeads.length;
+            const container = document.getElementById('leads-container');
+            container.innerHTML = '';
+
+            if (allLeads.length === 0) {
+                container.innerHTML = `<div class="bg-card border border-slate-800 rounded-2xl p-8 text-center text-slate-400">لا توجد طلبات عملاء حتى الآن.</div>`;
+                return;
+            }
+
+            allLeads.forEach(lead => {
+                const dateStr = new Date(lead.created_at).toLocaleString('ar-EG');
+                const cleanWa = (lead.whatsapp || '').replace(/[^0-9]/g, '');
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="bg-card border border-slate-800 rounded-2xl p-5 flex flex-col md:flex-row justify-between gap-4">
+                        <div class="space-y-2 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-black text-lg text-white">${lead.name}</span>
+                                <span class="bg-primary/20 text-blue-400 text-xs font-bold px-3 py-1 rounded-lg">${lead.project_type}</span>
+                                <span class="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-lg">الميزانية: ${lead.budget}</span>
+                                <span class="bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1 rounded-lg">المدة: ${lead.timeline}</span>
+                            </div>
+                            <p class="text-slate-300 text-sm bg-slate-900/70 p-3.5 rounded-xl leading-relaxed">${lead.project_description}</p>
+                            <div class="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
+                                <span><i class="ph ph-calendar"></i> ${dateStr}</span>
+                                <a href="mailto:${lead.email}" class="hover:text-blue-400" dir="ltr"><i class="ph ph-envelope"></i> ${lead.email}</a>
+                                <a href="https://wa.me/${cleanWa}" target="_blank" class="text-green-400 font-bold hover:underline" dir="ltr"><i class="ph ph-whatsapp-logo"></i> ${lead.whatsapp}</a>
+                            </div>
+                        </div>
+                        <div class="flex flex-col justify-between items-end gap-3 shrink-0">
+                            <select onchange="updateLeadStatus('${lead.id}', this.value)" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold">
+                                <option value="new" ${lead.status === 'new' ? 'selected' : ''}>🟢 طلب جديد</option>
+                                <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>📞 تم التواصل</option>
+                                <option value="in_progress" ${lead.status === 'in_progress' ? 'selected' : ''}>⚙️ قيد التنفيذ</option>
+                                <option value="completed" ${lead.status === 'completed' ? 'selected' : ''}>✅ مكتمل</option>
+                                <option value="archived" ${lead.status === 'archived' ? 'selected' : ''}>📁 مؤرشف</option>
+                            </select>
+                            <button onclick="deleteLead('${lead.id}')" class="text-red-400 hover:text-red-300 text-xs font-bold flex items-center gap-1">
+                                <i class="ph ph-trash"></i> حذف الطلب
+                            </button>
+                        </div>
+                    </div>
+                `);
+            });
+        }
+
+        async function updateLeadStatus(id, status) {
+            await sb.from('vortx_leads').update({ status }).eq('id', id);
+        }
+
+        async function deleteLead(id) {
+            if (!confirm('هل أنت متأكد من حذف هذا الطلب؟')) return;
+            await sb.from('vortx_leads').delete().eq('id', id);
+            fetchLeads();
+        }
+
+        // 2. إدارة المشاريع (Projects) + رفع الصور
+        async function fetchProjects() {
+            const { data } = await sb.from('vortx_projects').select('*').order('display_order', { ascending: true });
+            allProjects = data || [];
+            document.getElementById('projects-badge').innerText = allProjects.length;
+            const container = document.getElementById('projects-container');
+            container.innerHTML = '';
+
+            allProjects.forEach(p => {
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="bg-card border ${p.is_visible ? 'border-slate-800' : 'border-red-900/50 opacity-60'} rounded-2xl overflow-hidden flex flex-col">
+                        <div class="h-40 bg-slate-900 relative">
+                            <img src="${p.img}" class="w-full h-full object-cover">
+                            <span class="absolute top-2 right-2 bg-black/70 text-white text-xs font-bold px-2.5 py-1 rounded-lg">#${p.display_order}</span>
+                        </div>
+                        <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+                            <div>
+                                <h4 class="font-black text-base mb-1">${p.title_ar}</h4>
+                                <p class="text-slate-400 text-xs line-clamp-2">${p.desc_ar}</p>
+                            </div>
+                            <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+                                <button onclick='editProject(${JSON.stringify(p).replace(/'/g, "&apos;")})' class="text-blue-400 hover:text-blue-300 text-xs font-bold flex items-center gap-1">
+                                    <i class="ph ph-pencil-simple"></i> تعديل
+                                </button>
+                                <button onclick="deleteProject('${p.id}')" class="text-red-400 hover:text-red-300 text-xs font-bold flex items-center gap-1">
+                                    <i class="ph ph-trash"></i> حذف
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `);
+            });
+        }
+
+        function openProjectForm() {
+            document.getElementById('project-form').reset();
+            document.getElementById('proj-id').value = '';
+            document.getElementById('proj-order').value = allProjects.length + 1;
+            document.getElementById('project-modal-title').innerText = 'إضافة مشروع جديد';
+            document.getElementById('project-modal').classList.remove('hidden');
+            document.getElementById('project-modal').classList.add('flex');
+        }
+
+        function editProject(p) {
+            document.getElementById('proj-id').value = p.id;
+            document.getElementById('proj-title-ar').value = p.title_ar;
+            document.getElementById('proj-title-en').value = p.title_en;
+            document.getElementById('proj-desc-ar').value = p.desc_ar;
+            document.getElementById('proj-desc-en').value = p.desc_en;
+            document.getElementById('proj-tags-ar').value = (p.tags_ar || []).join(', ');
+            document.getElementById('proj-tags-en').value = (p.tags_en || []).join(', ');
+            document.getElementById('proj-link').value = p.link;
+            document.getElementById('proj-img').value = p.img;
+            document.getElementById('proj-order').value = p.display_order || 1;
+            document.getElementById('proj-visible').checked = p.is_visible;
+            document.getElementById('project-modal-title').innerText = 'تعديل المشروع';
+            document.getElementById('project-modal').classList.remove('hidden');
+            document.getElementById('project-modal').classList.add('flex');
+        }
+
+        function closeProjectForm() {
+            document.getElementById('project-modal').classList.add('hidden');
+            document.getElementById('project-modal').classList.remove('flex');
+        }
+
+        async function uploadProjectImage(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const statusText = document.getElementById('upload-status-text');
+            statusText.innerText = 'جاري الرفع...';
+
+            const ext = file.name.split('.').pop();
+            const fileName = `proj_${Date.now()}.${ext}`;
+            const { error } = await sb.storage.from('vortx-media').upload(fileName, file, { upsert: true });
+
+            if (error) {
+                alert('فشل رفع الصورة: ' + error.message);
+                statusText.innerText = 'رفع ملف صورة';
+                return;
+            }
+
+            const { data } = sb.storage.from('vortx-media').getPublicUrl(fileName);
+            document.getElementById('proj-img').value = data.publicUrl;
+            statusText.innerText = 'تم الرفع بنجاح ✓';
+        }
+
+        document.getElementById('project-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('proj-id').value;
+            const payload = {
+                title_ar: document.getElementById('proj-title-ar').value.trim(),
+                title_en: document.getElementById('proj-title-en').value.trim(),
+                desc_ar: document.getElementById('proj-desc-ar').value.trim(),
+                desc_en: document.getElementById('proj-desc-en').value.trim(),
+                tags_ar: document.getElementById('proj-tags-ar').value.split(',').map(s => s.trim()).filter(Boolean),
+                tags_en: document.getElementById('proj-tags-en').value.split(',').map(s => s.trim()).filter(Boolean),
+                link: document.getElementById('proj-link').value.trim(),
+                img: document.getElementById('proj-img').value.trim(),
+                display_order: parseInt(document.getElementById('proj-order').value) || 1,
+                is_visible: document.getElementById('proj-visible').checked
+            };
+
+            if (id) {
+                await sb.from('vortx_projects').update(payload).eq('id', id);
+            } else {
+                await sb.from('vortx_projects').insert([payload]);
+            }
+            closeProjectForm();
+            fetchProjects();
+        });
+
+        async function deleteProject(id) {
+            if (!confirm('هل تريد حذف هذا المشروع نهائياً؟')) return;
+            await sb.from('vortx_projects').delete().eq('id', id);
+            fetchProjects();
+        }
+
+        // 3. إدارة الخدمات (Services)
+        async function fetchServices() {
+            const { data } = await sb.from('vortx_services').select('*').order('display_order', { ascending: true });
+            allServices = data || [];
+            const container = document.getElementById('services-container');
+            container.innerHTML = '';
+
+            allServices.forEach(s => {
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="bg-card border border-slate-800 rounded-2xl p-5 flex flex-col justify-between space-y-4">
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-bold text-slate-400">#${s.number_badge} (${s.icon})</span>
+                            </div>
+                            <h4 class="font-black text-lg mb-1">${s.title_ar}</h4>
+                            <p class="text-slate-400 text-xs">${s.desc_ar}</p>
+                        </div>
+                        <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+                            <button onclick='editService(${JSON.stringify(s).replace(/'/g, "&apos;")})' class="text-blue-400 text-xs font-bold">تعديل</button>
+                            <button onclick="deleteService('${s.id}')" class="text-red-400 text-xs font-bold">حذف</button>
+                        </div>
+                    </div>
+                `);
+            });
+        }
+
+        function openServiceForm() {
+            document.getElementById('service-form').reset();
+            document.getElementById('serv-id').value = '';
+            document.getElementById('service-modal').classList.remove('hidden');
+            document.getElementById('service-modal').classList.add('flex');
+        }
+
+        function editService(s) {
+            document.getElementById('serv-id').value = s.id;
+            document.getElementById('serv-badge').value = s.number_badge;
+            document.getElementById('serv-icon').value = s.icon;
+            document.getElementById('serv-order').value = s.display_order || 1;
+            document.getElementById('serv-title-ar').value = s.title_ar;
+            document.getElementById('serv-title-en').value = s.title_en;
+            document.getElementById('serv-desc-ar').value = s.desc_ar;
+            document.getElementById('serv-desc-en').value = s.desc_en;
+            document.getElementById('service-modal').classList.remove('hidden');
+            document.getElementById('service-modal').classList.add('flex');
+        }
+
+        function closeServiceForm() {
+            document.getElementById('service-modal').classList.add('hidden');
+            document.getElementById('service-modal').classList.remove('flex');
+        }
+
+        document.getElementById('service-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('serv-id').value;
+            const payload = {
+                number_badge: document.getElementById('serv-badge').value.trim(),
+                icon: document.getElementById('serv-icon').value.trim(),
+                display_order: parseInt(document.getElementById('serv-order').value) || 1,
+                title_ar: document.getElementById('serv-title-ar').value.trim(),
+                title_en: document.getElementById('serv-title-en').value.trim(),
+                desc_ar: document.getElementById('serv-desc-ar').value.trim(),
+                desc_en: document.getElementById('serv-desc-en').value.trim(),
+                is_visible: true
+            };
+            if (id) {
+                await sb.from('vortx_services').update(payload).eq('id', id);
+            } else {
+                await sb.from('vortx_services').insert([payload]);
+            }
+            closeServiceForm();
+            fetchServices();
+        });
+
+        async function deleteService(id) {
+            if (!confirm('حذف هذه الخدمة؟')) return;
+            await sb.from('vortx_services').delete().eq('id', id);
+            fetchServices();
+        }
+
+        // 4. إدارة الإعدادات والإشعارات (Settings)
+        async function fetchSettings() {
+            const { data } = await sb.from('vortx_settings').select('*');
+            if (!data) return;
+            const map = {};
+            data.forEach(item => { map[item.key] = item; });
+
+            if (map.ntfy_topic) document.getElementById('set-ntfy').value = map.ntfy_topic.value_ar || '';
+            if (map.telegram_bot_token) document.getElementById('set-tg-token').value = map.telegram_bot_token.value_ar || '';
+            if (map.telegram_chat_id) document.getElementById('set-tg-chat').value = map.telegram_chat_id.value_ar || '';
+            if (map.contact_email) document.getElementById('set-email').value = map.contact_email.value_ar || '';
+            if (map.contact_whatsapp) document.getElementById('set-wa').value = map.contact_whatsapp.value_ar || '';
+            if (map.formspree_endpoint) document.getElementById('set-formspree').value = map.formspree_endpoint.value_ar || '';
+            if (map.hero_title) {
+                document.getElementById('set-hero-title-ar').value = map.hero_title.value_ar || '';
+                document.getElementById('set-hero-title-en').value = map.hero_title.value_en || '';
+            }
+            if (map.hero_desc) {
+                document.getElementById('set-hero-desc-ar').value = map.hero_desc.value_ar || '';
+                document.getElementById('set-hero-desc-en').value = map.hero_desc.value_en || '';
+            }
+        }
+
+        document.getElementById('settings-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('save-settings-btn');
+            btn.innerText = 'جاري الحفظ...';
+
+            const upserts = [
+                { key: 'ntfy_topic', value_ar: document.getElementById('set-ntfy').value.trim(), value_en: document.getElementById('set-ntfy').value.trim() },
+                { key: 'telegram_bot_token', value_ar: document.getElementById('set-tg-token').value.trim(), value_en: document.getElementById('set-tg-token').value.trim() },
+                { key: 'telegram_chat_id', value_ar: document.getElementById('set-tg-chat').value.trim(), value_en: document.getElementById('set-tg-chat').value.trim() },
+                { key: 'contact_email', value_ar: document.getElementById('set-email').value.trim(), value_en: document.getElementById('set-email').value.trim() },
+                { key: 'contact_whatsapp', value_ar: document.getElementById('set-wa').value.trim(), value_en: document.getElementById('set-wa').value.trim() },
+                { key: 'formspree_endpoint', value_ar: document.getElementById('set-formspree').value.trim(), value_en: document.getElementById('set-formspree').value.trim() },
+                { key: 'hero_title', value_ar: document.getElementById('set-hero-title-ar').value, value_en: document.getElementById('set-hero-title-en').value },
+                { key: 'hero_desc', value_ar: document.getElementById('set-hero-desc-ar').value, value_en: document.getElementById('set-hero-desc-en').value }
+            ];
+
+            await sb.from('vortx_settings').upsert(upserts);
+            btn.innerText = 'تم الحفظ بنجاح ✓';
+            setTimeout(() => { btn.innerText = 'حفظ جميع الإعدادات'; }, 2000);
+        });
+
+        checkAuth();
+    </script>
+</body>
+</html>
